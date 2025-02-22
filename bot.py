@@ -49,8 +49,8 @@ bot = Client("music_bot1", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH
 assistant = Client("assistant_account", session_string=ASSISTANT_SESSION)
 call_py = PyTgCalls(assistant)
 
-ASSISTANT_USERNAME = "@Frozensupporter1"
-ASSISTANT_CHAT_ID = 7386215995
+ASSISTANT_USERNAME = "@babe_girl"
+ASSISTANT_CHAT_ID = 7749604967
 API_ASSISTANT_USERNAME = "@Frozensupporter1"
 
 # API Endpoints
