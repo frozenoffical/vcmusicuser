@@ -30,6 +30,16 @@ import json    # Required for persisting the download cache
 import sys 
 from http.server import HTTPServer, BaseHTTPRequestHandler 
 import threading
+import subprocess
+import shlex
+from pyrogram import Client, filters
+import os
+import asyncio
+import sys
+import time
+import threading
+import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
 #Required for force restarting the bot using os.execv
 
 
