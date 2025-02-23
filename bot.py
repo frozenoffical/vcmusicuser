@@ -42,7 +42,7 @@ import json
 from http.server import HTTPServer, BaseHTTPRequestHandler
 #Required for force restarting the bot using os.execv
 
-
+cloned_bots = []
 
 # Bot and Assistant session strings 
 # Optionally load variables from a .env file (make sure you install python-dotenv)
