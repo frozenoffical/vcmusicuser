@@ -1148,14 +1148,11 @@ async def stop_handler(client, message):
 
 
 @bot.on_message(filters.group & filters.command("pause"))
-async def skip_handler(client, message):
+async def pause_handler(client, message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-
     if not await is_user_admin(message):
         await message.reply("❌ You need to be an admin to use this command.")
         return
-
     try:
         await call_py.pause_stream(chat_id)
         await message.reply("⏸ Paused the stream.")
@@ -1163,14 +1160,11 @@ async def skip_handler(client, message):
         await message.reply(f"❌ Failed to pause the stream. Error: {str(e)}\n\n support - @frozensupport1 ")
 
 @bot.on_message(filters.group & filters.command("resume"))
-async def skip_handler(client, message):
+async def resume_handler(client, message):
     chat_id = message.chat.id
-    user_id = message.from_user.id
-
     if not await is_user_admin(message):
         await message.reply("❌ You need to be an admin to use this command.")
         return
-
     try:
         await call_py.resume_stream(chat_id)
         await message.reply("▶️ Resumed the stream.")
@@ -1415,11 +1409,54 @@ async def stream_ended_handler(_, message):
 
 # Define a simple Flask app
 # Define a simple Flask app
+import asyncio
+import os
+import sys
+import time
+import threading
+import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from pyrogram import Client
+from pyrogram.types import Update
+
 MAIN_LOOP = None
+last_activity_time = time.time()  # Track last bot activity
+
+def restart_bot():
+    print("[WATCHDOG] Restarting bot...")
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+
+async def keep_alive_loop():
+    while True:
+        print("[KEEP ALIVE] Bot is running...")
+        await asyncio.sleep(300)
+
+async def activity_monitor():
+    global last_activity_time
+    while True:
+        await asyncio.sleep(600)
+        if time.time() - last_activity_time > 1800:  # No activity in 30 mins
+            print("[WATCHDOG] No activity detected. Restarting bot...")
+            restart_bot()
+
+async def check_bot_status():
+    while True:
+        await asyncio.sleep(600)
+        try:
+            await bot.send_message(ASSISTANT_CHAT_ID, "Ping check")
+        except Exception as e:
+            print(f"[ALERT] Bot seems frozen: {e}")
+            restart_bot()
+
+async def monitor_pyrogram():
+    while True:
+        await asyncio.sleep(300)
+        if not bot.is_connected:
+            print("[ERROR] Bot disconnected. Restarting...")
+            restart_bot()
 
 class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        # Health-check endpoint.
         if self.path == "/":
             self.send_response(200)
             self.end_headers()
@@ -1429,20 +1466,28 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
     def do_POST(self):
-        # Webhook endpoint: process updates sent from Telegram.
         if self.path == "/webhook":
             content_length = int(self.headers.get("Content-Length", 0))
             post_data = self.rfile.read(content_length)
             try:
-                update = json.loads(post_data.decode("utf-8"))
-            except Exception as e:
+                update_data = json.loads(post_data.decode("utf-8"))
+                update = Update.de_json(update_data, bot)
+            except Exception:
                 self.send_response(400)
                 self.end_headers()
                 self.wfile.write(b"Invalid JSON")
                 return
 
-            # Forward the update to your bot's update handler using the main event loop.
-            asyncio.run_coroutine_threadsafe(bot._handle_update(update), MAIN_LOOP)
+            future = asyncio.run_coroutine_threadsafe(bot.process_new_updates([update]), MAIN_LOOP)
+            def handle_future(fut):
+                try:
+                    fut.result()
+                except Exception as e:
+                    print(f"Error processing update: {e}")
+                    restart_bot()
+            
+            future.add_done_callback(handle_future)
+
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"OK")
@@ -1451,57 +1496,31 @@ class WebhookHandler(BaseHTTPRequestHandler):
             self.end_headers()
 
 def run_http_server():
-    # Use the PORT provided by Render (defaults to 8080 if not set)
     port = int(os.environ.get("PORT", 8080))
     httpd = HTTPServer(("", port), WebhookHandler)
     print(f"HTTP server running on port {port}")
     httpd.serve_forever()
 
-# Start the HTTP server in a separate daemon thread.
 server_thread = threading.Thread(target=run_http_server, daemon=True)
 server_thread.start()
-print("HTTP server started.")
 
 if __name__ == "__main__":
     try:
         print("Starting Frozen Music Bot...")
-        print("Loading all modules...")
-        print("Loading database...")
-        print("Loading APIs...")
-
-        # Ping external API endpoints to ensure they're reachable.
-        ping_api(API_URL, "Search API")
-        ping_api(DOWNLOAD_API_URL, "Download API")
-        
-        print("Starting bot...")
-        print("Starting assistant...")
-
-        # Start the PyTgCalls (voice call) client.
         call_py.start()
-
-        # Start the bot and assistant clients.
         bot.start()
         if not assistant.is_connected:
             assistant.start()
-
-        print("Bot and assistant started successfully. Running now...")
-
-        # Retrieve and store the event loop for webhook scheduling.
+        print("Bot started successfully.")
+        
         MAIN_LOOP = asyncio.get_event_loop()
-
-        # Optional: a simple keep-alive coroutine to ensure the event loop stays active.
-        async def keep_alive_loop():
-            while True:
-                await asyncio.sleep(60)
         MAIN_LOOP.create_task(keep_alive_loop())
-
-        # Use idle() to keep Pyrogram's event loop running indefinitely.
+        MAIN_LOOP.create_task(activity_monitor())
+        MAIN_LOOP.create_task(check_bot_status())
+        MAIN_LOOP.create_task(monitor_pyrogram())
         idle()
-
     except KeyboardInterrupt:
-        print("KeyboardInterrupt received. Bot is still running. To stop it, please kill the terminal process.")
+        print("Bot is still running. Kill the process to stop.")
     except Exception as e:
-        print(f"An error occurred: {e}")
-
-
-
+        print(f"Critical Error: {e}")
+        restart_bot()
