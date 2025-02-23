@@ -1400,7 +1400,7 @@ async def clone_bot(_, message):
         return
     
     new_bot_token = message.command[1]
-    if not new_bot_token.startswith("5") or len(new_bot_token) != 46:
+    if not re.match(r"^\d{10}:[A-Za-z0-9_-]{35,}$", new_bot_token):
         await message.reply("❌ Invalid bot token format.")
         return
     
