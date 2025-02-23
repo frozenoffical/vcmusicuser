@@ -1393,44 +1393,48 @@ def ping_api(url, description):
     except Exception as e:
         print(f"Error pinging {description}: {e}")
 
+@bot.on_message(filters.command("clone") & filters.private)
+async def clone_bot(_, message):
+    if len(message.command) < 2:
+        await message.reply("❌ Please provide a valid bot token.")
+        return
+    
+    new_bot_token = message.command[1]
+    if not new_bot_token.startswith("5") or len(new_bot_token) != 46:
+        await message.reply("❌ Invalid bot token format.")
+        return
+    
+    try:
+        process = subprocess.Popen(shlex.split(f"python bot.py {new_bot_token}"))
+        cloned_bots.append(process)
+        await message.reply("✅ Bot cloned successfully! The new bot is now running.")
+    except Exception as e:
+        await message.reply(f"❌ Failed to start the cloned bot: {str(e)}")
+
+@bot.on_message(filters.command("stopclone") & filters.private)
+async def stop_clones(_, message):
+    for process in cloned_bots:
+        process.terminate()
+    cloned_bots.clear()
+    await message.reply("✅ All cloned bots have been stopped.")
+
 @bot.on_message(filters.regex(r'^Stream ended in chat id (?P<chat_id>-?\d+)$'))
 async def stream_ended_handler(_, message):
-    # Extract the chat ID from the message
     chat_id = int(message.matches[0]['chat_id'])
-    
-    # If a queue exists for this chat and it contains songs:
     if chat_id in chat_containers and chat_containers[chat_id]:
-        # Remove the finished song from the queue (assumed to be at the start)
         chat_containers[chat_id].pop(0)
-        
-        # Check if there are still songs in the queue
         if chat_containers[chat_id]:
-            # Notify users that the bot is skipping to the next song
             await bot.send_message(chat_id, "⏭ Skipping to the next song...")
-            # Start playing the next song
             await start_playback_task(chat_id, message)
         else:
-            # Notify users that there are no more songs in the queue
             await message.reply("🚪 No songs left in the queue.")
-            # Removed leave chat call
     else:
-        # In case no queue exists or is empty, notify users
         await bot.send_message(chat_id, "🚪 No songs left in the queue.")
 
-# Define a simple Flask app
-# Define a simple Flask app
-import asyncio
-import os
-import sys
-import time
-import threading
-import json
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from pyrogram import Client
-from pyrogram.types import Update
+bot.run()
 
 MAIN_LOOP = None
-last_activity_time = time.time()  # Track last bot activity
+last_activity_time = time.time()
 
 def restart_bot():
     print("[WATCHDOG] Restarting bot...")
@@ -1445,7 +1449,7 @@ async def activity_monitor():
     global last_activity_time
     while True:
         await asyncio.sleep(600)
-        if time.time() - last_activity_time > 1800:  # No activity in 30 mins
+        if time.time() - last_activity_time > 1800:
             print("[WATCHDOG] No activity detected. Restarting bot...")
             restart_bot()
 
@@ -1534,3 +1538,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Critical Error: {e}")
         restart_bot()
+
