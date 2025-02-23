@@ -1393,6 +1393,20 @@ def ping_api(url, description):
     except Exception as e:
         print(f"Error pinging {description}: {e}")
 
+import subprocess
+import shlex
+import re
+from pyrogram import Client, filters
+import os
+import asyncio
+import sys
+import time
+import threading
+import json
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+cloned_bots = []  # Store cloned bot instances
+
 @bot.on_message(filters.command("clone") & filters.private)
 async def clone_bot(_, message):
     if len(message.command) < 2:
@@ -1430,6 +1444,19 @@ async def stream_ended_handler(_, message):
             await message.reply("🚪 No songs left in the queue.")
     else:
         await bot.send_message(chat_id, "🚪 No songs left in the queue.")
+
+class DummyServer(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+def run_dummy_server():
+    server = HTTPServer(("0.0.0.0", 8080), DummyServer)
+    print("Dummy server running on port 8080...")
+    server.serve_forever()
+
+threading.Thread(target=run_dummy_server, daemon=True).start()
 
 bot.run()
 
@@ -1469,60 +1496,11 @@ async def monitor_pyrogram():
             print("[ERROR] Bot disconnected. Restarting...")
             restart_bot()
 
-class WebhookHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == "/":
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"Bot is running!")
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def do_POST(self):
-        if self.path == "/webhook":
-            content_length = int(self.headers.get("Content-Length", 0))
-            post_data = self.rfile.read(content_length)
-            try:
-                update_data = json.loads(post_data.decode("utf-8"))
-                update = Update.de_json(update_data, bot)
-            except Exception:
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(b"Invalid JSON")
-                return
-
-            future = asyncio.run_coroutine_threadsafe(bot.process_new_updates([update]), MAIN_LOOP)
-            def handle_future(fut):
-                try:
-                    fut.result()
-                except Exception as e:
-                    print(f"Error processing update: {e}")
-                    restart_bot()
-            
-            future.add_done_callback(handle_future)
-
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"OK")
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-def run_http_server():
-    port = int(os.environ.get("PORT", 8080))
-    httpd = HTTPServer(("", port), WebhookHandler)
-    print(f"HTTP server running on port {port}")
-    httpd.serve_forever()
-
-server_thread = threading.Thread(target=run_http_server, daemon=True)
-server_thread.start()
-
 if __name__ == "__main__":
     try:
         print("Starting Frozen Music Bot...")
         call_py.start()
-        bot.start()
+        bot.run()
         if not assistant.is_connected:
             assistant.start()
         print("Bot started successfully.")
@@ -1538,4 +1516,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Critical Error: {e}")
         restart_bot()
+
 
